@@ -1,7 +1,7 @@
 package compose_test
 
 import (
-	"github.com/kaiaverkvist/dployr/internal/compose"
+	"github.com/kaiaverkvist/dployr/pkg/compose"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -36,7 +36,8 @@ services:
       - fullstack-postgres
     networks:
       - fullstack
-`)
+`
+)
 
 var (
 	expectedEnvs = []string{
@@ -58,7 +59,6 @@ var (
 
 func TestParseEnvironmentVariables(t *testing.T) {
 	envs := compose.GetExpectedEnvironmentVariables(composeFile)
-	t.Log(envs)
 
 	assert.Len(t, envs, 13)
 	assert.Equal(t, expectedEnvs, envs)
