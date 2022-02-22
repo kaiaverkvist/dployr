@@ -2,10 +2,40 @@ package main
 
 import (
 	"fmt"
+	"github.com/kaiaverkvist/dployr/internal/logging"
+	"github.com/kaiaverkvist/dployr/internal/web"
+	"github.com/kaiaverkvist/dployr/internal/web/context"
 	"github.com/kaiaverkvist/dployr/pkg/deploy"
+	"github.com/kaiaverkvist/dployr/version"
 	"github.com/labstack/gommon/log"
 	"github.com/spf13/cobra"
 	"os"
+	"sync"
+)
+
+var (
+	// Used to find the user's ssh key path if it isn't specified by the user themselves.
+	homedir, _ = os.UserHomeDir()
+)
+
+var (
+	pubKeyDefault      = fmt.Sprintf("%s/.ssh/id_rsa", homedir)
+	dockerHostTemplate = "DOCKER_HOST=\"ssh://%s@%s\""
+
+	// Variables from command line flags:
+	// - Directory
+	directory string
+	// - Public Key path
+	privateKeypath string
+	// - Host IP
+	host string
+	// - Username
+	user string
+
+	// Stores the deployment metadata and performs commands.
+	deployment *deploy.Deployment
+
+	wg sync.WaitGroup
 )
 
 var (
@@ -13,64 +43,54 @@ var (
 		Use:   "dployr",
 		Short: "",
 		Long:  "",
-	}
-
-	initCmd = &cobra.Command{
-		Use:   "init",
-		Short: "Initialize dployr with a repository URL",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			log.Info(fmt.Sprintf("Using repository URL '%s'", repository))
+
+			log.Info("Initializing dployr @ version: ", version.BuildVersion, " / with time build time: ", version.BuildTime)
+
 			log.Info(fmt.Sprintf("Looking for private key for server authentication @ '%s'", privateKeypath))
 
-			deployment = deploy.NewDeployment(repository, host, user, privateKeypath)
+			log.Info(fmt.Sprintf("Attempting to find docker-compose in directory @ '%s'", directory))
+			deployment, err := deploy.NewDeployment(directory, host, user, privateKeypath)
+			if err != nil {
+				log.Error("Unable to create deployment: ", err)
+				return err
+			}
 
-			log.Info(deployment.DialGetUser())
+			wdc := context.NewWebDataContainer(deployment)
+
+			wg.Add(1)
+			go web.CreateServer(&wdc)
+			wg.Wait()
 
 			return nil
 		},
 	}
 )
 
-var (
-	homedir, _ = os.UserHomeDir()
-)
-
-var (
-	logStyle      = "${time_rfc3339}  ${level} "
-	pubKeyDefault = fmt.Sprintf("%s/.ssh/id_rsa", homedir)
-
-	// Variables from command line flags:
-	// - Repository URL string
-	repository string
-	// - Public Key path
-	privateKeypath string
-
-	host string
-	user string
-
-	// Stores the deployment metadata and performs commands.
-	deployment *deploy.Deployment
-)
-
 func init() {
-	log.SetHeader(logStyle)
+	log.SetHeader(logging.LogStyle)
 
-	// --repo or -r
-	initCmd.Flags().StringVarP(&repository, "repo", "r", "", "repository url to initialize")
-	_ = initCmd.MarkFlagRequired("repo")
+	workDir, err := os.Getwd()
+	if err != nil {
+		log.Warn("Unable to find working directory: ", err)
+		log.Error("Please use --directory to specify instead!")
+		directory = ""
+	}
 
-	// --host or -ho
-	initCmd.Flags().StringVarP(&host, "host", "", "", "host including port")
-	_ = initCmd.MarkFlagRequired("host")
+	// --dir or -d
+	rootCmd.Flags().StringVarP(&directory, "directory", "d", workDir, "repository directory on local machine")
+	_ = rootCmd.MarkFlagRequired("directory")
+
+	// --host
+	rootCmd.Flags().StringVarP(&host, "host", "", "", "host of remote server")
+	_ = rootCmd.MarkFlagRequired("host")
 
 	// --user or -u
-	initCmd.Flags().StringVarP(&user, "user", "u", "", "username to login with")
-	_ = initCmd.MarkFlagRequired("user")
+	rootCmd.Flags().StringVarP(&user, "user", "u", "", "login username on remote")
+	_ = rootCmd.MarkFlagRequired("user")
 
-	// --public-key or -k
-	initCmd.Flags().StringVarP(&privateKeypath, "private-key", "k", pubKeyDefault, "Private key path")
-
-	rootCmd.AddCommand(initCmd)
+	// --private-key or -k
+	rootCmd.Flags().StringVarP(&privateKeypath, "private-key", "k", pubKeyDefault, "private key path")
 }
 
 func main() {

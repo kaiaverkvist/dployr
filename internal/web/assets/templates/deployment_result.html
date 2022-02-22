@@ -1,0 +1,12 @@
+<div hx-target="this"
+     hx-get="/output"
+     hx-trigger="load delay:1000ms"
+     hx-swap="outerHTML"
+ style="margin-bottom: 3rem;">
+    <h3>Output</h3>
+    <pre>
+        <code>
+            {{ .output }}
+        </code>
+    </pre>
+</div>
