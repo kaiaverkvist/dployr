@@ -10,6 +10,11 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"time"
+)
+
+var (
+	tmpContextName = "tmp-dployr"
 )
 
 // Deployment represents a dployr deployment to a single host.
@@ -51,12 +56,29 @@ func NewDeployment(dir string, host string, user string, privKey string) (*Deplo
 }
 
 func (d *Deployment) PerformDeployment(envs map[string]string) (string, error) {
-	cmd := exec.Command("/bin/bash", "-c", "docker-compose up --build -d")
+	out, err := exec.Command("docker", "context", "create", tmpContextName, "--docker", "\"host=ssh://"+d.FullHostName+"\"").CombinedOutput()
+	if err != nil {
+		log.Error("Could not create docker context for dployr: ", err.Error())
+		log.Warn("Maybe it exists already?")
+		//return "", err
+	}
+	log.Info("Created temporary docker context for dployr: ", string(out))
+
+	log.Info("Using context ", tmpContextName, " temporarily during deployment.")
+	_ = exec.Command("docker", "context", "use", tmpContextName).Run()
+	log.Info("Context set, will now attempt to create..")
+
+	time.Sleep(time.Second)
+
+	cmd := exec.Command("docker-compose", "--context", tmpContextName, "up", "--build", "-d")
 	cmd.Dir = d.Dir
 
 	// OS env and then add the DOCKER_HOST variable.
 	cmd.Env = os.Environ()
-	cmd.Env = append(cmd.Env, fmt.Sprintf("DOCKER_HOST=ssh://%s", d.FullHostName))
+	cmd.Env = append(cmd.Env, "DOCKER_CONTEXT="+tmpContextName)
+
+	// https://github.com/docker/compose/issues/8218
+	cmd.Env = append(cmd.Env, "COMPOSE_DOCKER_CLI_BUILD=0")
 
 	// Format all the supplied env vars:
 	for k, v := range envs {
@@ -71,9 +93,13 @@ func (d *Deployment) PerformDeployment(envs map[string]string) (string, error) {
 	cmd.Stdout = mw
 	cmd.Stderr = mw
 
-	err := cmd.Run()
-	if err != nil {
-		return "", err
-	}
+	err = cmd.Run()
+	d.cleanupContext()
 	return d.OutputBuffer.String(), err
+}
+
+func (d *Deployment) cleanupContext() {
+	_ = exec.Command("docker", "context", "use", "default").Run()
+	_ = exec.Command("docker", "context", "rm", tmpContextName).Run()
+	log.Info("Cleaned up docker context!")
 }
