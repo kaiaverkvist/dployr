@@ -4,6 +4,8 @@
 *.dll
 *.so
 *.dylib
+dployr
+app
 
 # MacOS metadata file
 .DS_Store

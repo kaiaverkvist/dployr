@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" href="/assets/public/css/pico.min.css">
+    <title>dployr: {{ .hostname }}</title>
+    <script src="https://unpkg.com/htmx.org@1.7.0"></script>
+</head>
+<body>
+    <div class="container" style="margin-top: 2rem;">
+        <h1>dployr</h1>
+
+        <article>
+            Deploying to <code>{{ .hostname }}</code> from local folder <code>{{ .dir }}</code>
+            <ul>
+                <li>Currently only deployment using SSH-keys is supported. This means you will need your public key in the remote's <code>.ssh/authorized_keys</code> file.</li>
+            </ul>
+        </article>
+
+        <form hx-post="/" hx-swap="innerHTML">
+            <div class="grid">
+                <div>
+                    <details>
+                        <summary>Environment variables</summary>
+                        {{ range i, v := .envs }}
+                            <label for="{{ v }}">{{ v }}
+                                <input name="{{ v }}" id="{{ v }}" type="text" placeholder="?" required>
+                            </label>
+                        {{ end }}
+                    </details>
+                </div>
+                <div>
+                    <button type="submit" hx-target="this">Deploy</button>
+                </div>
+            </div>
+        </form>
+</body>
+</html>
